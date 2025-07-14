@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,15 +58,14 @@ func deviceHandler(w http.ResponseWriter, r *http.Request) {
 	host, port, err := net.SplitHostPort(r.RemoteAddr)
 
 	newDevice := models.Device{
-		Name:     req.Name,
-		PubKey:   req.PubKey,
-		Endpoint: req.Endpoint,
-		IP:       host,
-		Port:     port,
-		LastSeen: time.Now().UTC(),
+		Name:      req.Name,
+		PubKey:    req.PubKey,
+		Endpoint:  req.Endpoint,
+		IP:        host,
+		Port:      port,
+		LastSeen:  time.Now().UTC(),
+		Connected: true,
 	}
-
-	fmt.Println(newDevice)
 
 	// look up device by pk
 	device, err := GetDeviceByPubKey(newDevice.PubKey)
@@ -76,6 +76,14 @@ func deviceHandler(w http.ResponseWriter, r *http.Request) {
 
 	if device == nil {
 		device, err = RegisterDevice(newDevice)
+	} else {
+		device.Connected = true
+		device.LastSeen = time.Now().UTC()
+		err = UpdateDevice(*device)
+		if err != nil {
+			http.Error(w, "failed to connect device: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err != nil {
@@ -102,17 +110,72 @@ func peersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(peerList)
 }
 
+func checkPeers() {
+	const PING_HEARTBEAT = time.Second * 30
+
+	for {
+		peerList, err := GetAllDevices()
+		if err != nil {
+			log.Fatal("failed to get peers:", err.Error())
+		}
+
+		fmt.Printf("✅ Active Peers:\n")
+		for _, peer := range peerList {
+			if time.Since(peer.LastSeen) > PING_HEARTBEAT*3 {
+				peer.Connected = false
+				UpdateDevice(peer)
+			}
+
+			if peer.Connected {
+				fmt.Printf("- %s @ %s (%s:%s)\n", peer.Name, peer.IP, peer.Endpoint, peer.Port)
+			}
+		}
+		time.Sleep(PING_HEARTBEAT)
+	}
+}
+
+func requestMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Grab Authorization header (or any other)
+		authHeader := r.Header.Get("Authorization")
+		pubkey_b64 := strings.Split(authHeader, " ")[1]
+
+		// check if exists
+		device, err := GetDeviceByPubKey(pubkey_b64)
+		if err != nil {
+			http.Error(w, "failed to get device: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if device != nil {
+			// update connection
+			device.LastSeen = time.Now().UTC()
+			UpdateDevice(*device)
+		}
+
+		// Pass the request to the next handler
+		next.ServeHTTP(w, r)
+	})
+
+}
+
 func main() {
 	var err error
+
+	mux := http.NewServeMux()
+	middlewareMux := requestMiddleware(mux)
 
 	err = initDB()
 	if err != nil {
 		log.Fatal("DB Error:", err.Error())
 	}
 
-	go http.HandleFunc("/register", deviceHandler)
-	go http.HandleFunc("/peers", peersHandler)
+	go mux.HandleFunc("/device", deviceHandler)
+	go mux.HandleFunc("/peers", peersHandler)
+
+	go checkPeers()
 
 	log.Println("Server running on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", middlewareMux))
+
 }

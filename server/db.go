@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"log"
-	"time"
 
 	"github.com/elitracy/p2pnetwork/shared"
 	"gorm.io/driver/postgres"
@@ -37,31 +36,12 @@ func RegisterDevice(device models.Device) (*models.Device, error) {
 	return &device, result.Error
 }
 
-func UpdateDeviceByPubKey(pubKey, endpoint, ip string) (*models.Device, error) {
-	var device models.Device
-
-	// Find device by PubKey
-	result := db.First(&device)
-
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	// Update the fields
-	device.IP = ip
-	device.Endpoint = endpoint
-	device.LastSeen = time.Now().UTC()
-
+func UpdateDevice(device models.Device) error {
 	// Save the updated device
 	if err := db.Save(&device).Error; err != nil {
-		return nil, err
+		return err
 	}
-
-	return &device, nil
+	return nil
 }
 
 func GetDeviceByPubKey(pubKey string) (*models.Device, error) {
