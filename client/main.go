@@ -13,16 +13,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/elitracy/p2pnetwork/shared"
 	"github.com/zalando/go-keyring"
 )
-
-type Device struct {
-	Name     string `json:"name"`
-	PubKey   string `json:"pub_key"`
-	Endpoint string `json:"endpoint"`
-	IP       string `json:"ip"`
-	LastSeen string `json:"last_seen"`
-}
 
 const (
 	keyringService = "meshnet"
@@ -41,7 +34,7 @@ func syncPeers(server string) {
 			time.Sleep(2 * time.Second)
 			continue
 		}
-		var peers []Device
+		var peers []models.Device
 		err = json.NewDecoder(resp.Body).Decode(&peers)
 		resp.Body.Close()
 		if err != nil {
@@ -51,7 +44,7 @@ func syncPeers(server string) {
 		}
 		fmt.Println("🔄 Current Peers:")
 		for _, peer := range peers {
-			fmt.Printf("- %s (%s) @ %s\n", peer.Name, peer.IP, peer.Endpoint)
+			fmt.Printf("- %s @ %s (%s:%s)\n", peer.Name, peer.IP, peer.Endpoint, peer.Port)
 		}
 
 		saveEncryptedPeers(peers)
@@ -59,7 +52,7 @@ func syncPeers(server string) {
 	}
 }
 
-func saveEncryptedPeers(peers []Device) {
+func saveEncryptedPeers(peers []models.Device) {
 	key := getOrCreateAESKey()
 	plaintext, err := json.Marshal(peers)
 	if err != nil {

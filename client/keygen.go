@@ -99,8 +99,6 @@ func registerDevice(name, endpoint, server string) error {
 		Signature: base64.StdEncoding.EncodeToString(sig),
 	}
 
-	fmt.Println(req)
-
 	body, err := json.Marshal(req)
 	if err != nil {
 		return err
