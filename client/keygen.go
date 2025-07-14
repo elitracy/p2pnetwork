@@ -22,16 +22,13 @@ type RegisterRequest struct {
 	Signature string `json:"signature"`
 }
 
-func ensureKeysExist() (ed25519.PublicKey, ed25519.PrivateKey, error) {
-	pubPath := "pubkey.txt"
-	privPath := "privkey.txt"
-
+func ensureKeysExist(pubPath string, privPath string) (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	// Check if both files exist
 	pubExists := fileExists(pubPath)
 	privExists := fileExists(privPath)
 
 	if pubExists && privExists {
-		return loadKeys()
+		return loadKeys(pubPath, privPath)
 	}
 
 	// Generate new keypair
@@ -51,7 +48,7 @@ func ensureKeysExist() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 		return nil, nil, err
 	}
 
-	fmt.Println("🔑 Generated new keypair and saved to pubkey.txt / privkey.txt")
+	fmt.Println("🔑 Generated new keypair")
 	return pub, priv, nil
 }
 
@@ -60,12 +57,12 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func loadKeys() (ed25519.PublicKey, ed25519.PrivateKey, error) {
-	pubKeyB64, err := os.ReadFile("pubkey.txt")
+func loadKeys(pubkeyPath string, privkeyPath string) (ed25519.PublicKey, ed25519.PrivateKey, error) {
+	pubKeyB64, err := os.ReadFile(pubkeyPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	privKeyB64, err := os.ReadFile("privkey.txt")
+	privKeyB64, err := os.ReadFile(privkeyPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -83,7 +80,9 @@ func loadKeys() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 }
 
 func registerDevice(name, endpoint, server string) error {
-	pubKey, privKey, err := ensureKeysExist()
+	pubKeyPath := "pubkey-" + name + ".txt"
+	privKeyPath := "privkey-" + name + ".txt"
+	pubKey, privKey, err := ensureKeysExist(pubKeyPath, privKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to load or generate keys: %v", err)
 	}
@@ -99,6 +98,8 @@ func registerDevice(name, endpoint, server string) error {
 		Timestamp: timestamp,
 		Signature: base64.StdEncoding.EncodeToString(sig),
 	}
+
+	fmt.Println(req)
 
 	body, err := json.Marshal(req)
 	if err != nil {
