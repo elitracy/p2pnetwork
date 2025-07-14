@@ -79,10 +79,14 @@ func loadKeys(pubkeyPath string, privkeyPath string) (ed25519.PublicKey, ed25519
 	return ed25519.PublicKey(pubKey), ed25519.PrivateKey(privKey), nil
 }
 
-func registerDevice(name, endpoint, server string) error {
+func registerDevice(name string, endpoint string, server string, authInfo *AuthInfo) error {
 	pubKeyPath := "pubkey-" + name + ".txt"
 	privKeyPath := "privkey-" + name + ".txt"
 	pubKey, privKey, err := ensureKeysExist(pubKeyPath, privKeyPath)
+
+	authInfo.public_key = pubKey
+	authInfo.private_key = privKey
+
 	if err != nil {
 		return fmt.Errorf("failed to load or generate keys: %v", err)
 	}
@@ -91,23 +95,33 @@ func registerDevice(name, endpoint, server string) error {
 	msg := []byte(strconv.FormatInt(timestamp, 10))
 	sig := ed25519.Sign(privKey, msg)
 
-	req := RegisterRequest{
+	registerReq := RegisterRequest{
 		Name:      name,
 		PubKey:    base64.StdEncoding.EncodeToString(pubKey),
 		Endpoint:  endpoint,
 		Timestamp: timestamp,
 		Signature: base64.StdEncoding.EncodeToString(sig),
 	}
-
-	body, err := json.Marshal(req)
+	body, err := json.Marshal(registerReq)
 	if err != nil {
 		return err
 	}
 
-	resp, err := http.Post(server+"/register", "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", server+"/device", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
+	pubKeyStr := base64.StdEncoding.EncodeToString(authInfo.public_key)
+
+	req.Header.Add("Authorization", "Bearer "+pubKeyStr)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error on response.\n[ERROR] -", err)
+	}
+
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)

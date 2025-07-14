@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -26,25 +27,44 @@ const (
 const peersFile = "peers.json.enc"
 const peersKeyFile = "peerskey.txt" // 32 bytes base64 AES key
 
+type AuthInfo struct {
+	public_key  ed25519.PublicKey
+	private_key ed25519.PrivateKey
+}
+
+var BearerKeys AuthInfo
+
 func syncPeers(server string) {
 	for {
-		resp, err := http.Get(server + "/peers")
+		req, err := http.NewRequest("GET", server+"/peers", nil)
+
+		pubKeyStr := base64.StdEncoding.EncodeToString(BearerKeys.public_key)
+		req.Header.Add("Authorization", "Bearer "+pubKeyStr)
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("❌ Failed to fetch peers: %v", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
+
 		var peers []models.Device
 		err = json.NewDecoder(resp.Body).Decode(&peers)
+
 		resp.Body.Close()
 		if err != nil {
 			log.Printf("❌ Failed to parse peer list: %v", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
+
 		fmt.Println("🔄 Current Peers:")
 		for _, peer := range peers {
-			fmt.Printf("- %s @ %s (%s:%s)\n", peer.Name, peer.IP, peer.Endpoint, peer.Port)
+			if peer.Connected {
+				fmt.Printf("- %s @ %s (%s:%s)\n", peer.Name, peer.IP, peer.Endpoint, peer.Port)
+			}
 		}
 
 		saveEncryptedPeers(peers)
@@ -134,7 +154,7 @@ func main() {
 	endpoint := os.Args[2]
 	server := os.Args[3]
 
-	err := registerDevice(name, endpoint, server)
+	err := registerDevice(name, endpoint, server, &BearerKeys)
 	if err != nil {
 		log.Fatalf("Registration failed: %v", err)
 	}
