@@ -1,4 +1,4 @@
-module github.com/elitracy/p2pnetwork/models
+module github.com/elitracy/p2pnetwork/shared
 
 go 1.22.4
 

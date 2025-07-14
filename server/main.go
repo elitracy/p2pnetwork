@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elitracy/p2pnetwork/models"
 	"github.com/zalando/go-keyring"
 )
 
@@ -24,7 +25,7 @@ const (
 	peersFile      = "server_peers.json.enc"
 )
 
-type Device struct {
+type DeviceResponse struct {
 	Name     string `json:"name"`
 	PubKey   string `json:"pub_key"`
 	Endpoint string `json:"endpoint"`
@@ -41,22 +42,10 @@ type RegisterRequest struct {
 }
 
 var (
-	devices   = make(map[string]Device) // map by pubkey
+	devices   = make(map[string]DeviceResponse) // map by pubkey
 	devicesMu sync.Mutex
 	aesKey    []byte
 )
-
-func RegisterDevice(name, pubKey, endpoint, ip string) (*Device, error) {
-	device := Device{
-		Name:     name,
-		PubKey:   pubKey,
-		Endpoint: endpoint,
-		IP:       ip,
-		LastSeen: time.Now().UTC(),
-	}
-	result := db.Create(&device)
-	return &device, result.Error
-}
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -76,7 +65,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	devicesMu.Lock()
 	defer devicesMu.Unlock()
 
-	newDevice := Device{
+	newDevice := DeviceResponse{
 		Name:     req.Name,
 		PubKey:   req.PubKey,
 		Endpoint: req.Endpoint,
@@ -109,7 +98,7 @@ func peersHandler(w http.ResponseWriter, r *http.Request) {
 	devicesMu.Lock()
 	defer devicesMu.Unlock()
 
-	var peerList []Device
+	var peerList []DeviceResponse
 	for _, d := range devices {
 		peerList = append(peerList, d)
 	}
@@ -170,7 +159,7 @@ func loadDevices() error {
 		return err
 	}
 
-	var loadedDevices map[string]Device
+	var loadedDevices map[string]DeviceResponse
 	if err := json.Unmarshal(plaintext, &loadedDevices); err != nil {
 		return err
 	}
@@ -179,7 +168,7 @@ func loadDevices() error {
 	return nil
 }
 
-func compareDevices(a Device, b Device) bool {
+func compareDevices(a DeviceResponse, b DeviceResponse) bool {
 	if a.PubKey != b.PubKey {
 		return false
 	}
