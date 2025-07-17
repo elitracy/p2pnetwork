@@ -64,7 +64,7 @@ func deviceHandler(w http.ResponseWriter, r *http.Request) {
 		IP:        host,
 		Port:      port,
 		LastSeen:  time.Now().UTC(),
-		Connected: true,
+		Connected: false,
 	}
 
 	// look up device by pk
@@ -77,7 +77,6 @@ func deviceHandler(w http.ResponseWriter, r *http.Request) {
 	if device == nil {
 		device, err = RegisterDevice(newDevice)
 	} else {
-		device.Connected = true
 		device.LastSeen = time.Now().UTC()
 		err = UpdateDevice(*device)
 		if err != nil {
@@ -111,7 +110,7 @@ func peersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func checkPeers() {
-	const PING_HEARTBEAT = time.Second * 30
+	const PING_HEARTBEAT = time.Second * 10
 
 	for {
 		peerList, err := GetAllDevices()
@@ -156,7 +155,6 @@ func requestMiddleware(next http.Handler) http.Handler {
 		// Pass the request to the next handler
 		next.ServeHTTP(w, r)
 	})
-
 }
 
 func main() {

@@ -37,11 +37,8 @@ func RegisterDevice(device models.Device) (*models.Device, error) {
 }
 
 func UpdateDevice(device models.Device) error {
-	// Save the updated device
-	if err := db.Save(&device).Error; err != nil {
-		return err
-	}
-	return nil
+	result := db.Save(&device).Error
+	return result
 }
 
 func GetDeviceByPubKey(pubKey string) (*models.Device, error) {

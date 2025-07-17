@@ -7,11 +7,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/elitracy/p2pnetwork/shared"
@@ -33,8 +35,9 @@ type AuthInfo struct {
 }
 
 var BearerKeys AuthInfo
+var peers []models.Device
 
-func syncPeers(server string) {
+func getPeersFromServer(server string) {
 	for {
 		req, err := http.NewRequest("GET", server+"/peers", nil)
 
@@ -50,7 +53,6 @@ func syncPeers(server string) {
 			continue
 		}
 
-		var peers []models.Device
 		err = json.NewDecoder(resp.Body).Decode(&peers)
 
 		resp.Body.Close()
@@ -58,13 +60,6 @@ func syncPeers(server string) {
 			log.Printf("❌ Failed to parse peer list: %v", err)
 			time.Sleep(2 * time.Second)
 			continue
-		}
-
-		fmt.Println("🔄 Current Peers:")
-		for _, peer := range peers {
-			if peer.Connected {
-				fmt.Printf("- %s @ %s (%s:%s)\n", peer.Name, peer.IP, peer.Endpoint, peer.Port)
-			}
 		}
 
 		saveEncryptedPeers(peers)
@@ -146,18 +141,100 @@ func getOrCreateAESKey() []byte {
 	return key
 }
 
+func getDeviceByPubKey(pubKey string) (*models.Device, error) {
+	for _, peer := range peers {
+		if peer.PubKey == pubKey {
+			fmt.Println("trying to return peer")
+			return &peer, nil
+		}
+	}
+
+	return nil, errors.New("Could not find peer")
+}
+
+func requestMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Grab Authorization header (or any other)
+		authHeader := r.Header.Get("Authorization")
+		pubkey_b64 := strings.Split(authHeader, " ")[1]
+
+		// check if exists
+		device, err := getDeviceByPubKey(pubkey_b64)
+		if err != nil {
+			http.Error(w, "failed to get device: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if device != nil {
+			device.LastSeen = time.Now().UTC()
+			device.Connected = true // doesn't tell server
+		}
+
+		// Pass the request to the next handler
+		next.ServeHTTP(w, r)
+	})
+}
+
+func checkPeers() {
+	for {
+		for i, peer := range peers {
+
+			req, err := http.NewRequest("GET", peer.Endpoint+"/ping", nil)
+
+			pubKeyStr := base64.StdEncoding.EncodeToString(BearerKeys.public_key)
+			req.Header.Add("Authorization", "Bearer "+pubKeyStr)
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+
+			if err != nil || resp.StatusCode != 200 {
+				log.Printf("❌ Failed to ping peer: %v", err)
+				peers[i].Connected = false
+			} else {
+				peers[i].Connected = true
+			}
+		}
+
+		fmt.Println("🔄 Connected Peers:")
+		for _, peer := range peers {
+			if peer.Connected {
+				fmt.Printf("- %s @ %s (%s:%s)\n", peer.Name, peer.IP, peer.Endpoint, peer.Port)
+			}
+		}
+
+		time.Sleep(time.Second * 5)
+	}
+}
+
+func handlePing(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("pong"))
+}
+
 func main() {
-	if len(os.Args) != 4 {
-		log.Fatal("Usage: ./client <device_name> <public_ip:port> <control_server_url>")
+	if len(os.Args) != 5 {
+		log.Fatal("Usage: ./client <device_name> <host> <port> <control_server_url>")
 	}
 	name := os.Args[1]
-	endpoint := os.Args[2]
-	server := os.Args[3]
+	host := os.Args[2]
+	port := os.Args[3]
+	server := os.Args[4]
 
-	err := registerDevice(name, endpoint, server, &BearerKeys)
+	err := registerDevice(name, host+":"+port, server, &BearerKeys)
 	if err != nil {
 		log.Fatalf("Registration failed: %v", err)
 	}
 
-	syncPeers(server)
+	go getPeersFromServer(server)
+	go checkPeers()
+
+	mux := http.NewServeMux()
+	middlewareMux := requestMiddleware(mux)
+
+	go mux.HandleFunc("/ping", handlePing)
+
+	log.Printf("Server running on :%s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, middlewareMux))
+
 }
