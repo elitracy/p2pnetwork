@@ -4,6 +4,7 @@ go 1.22.4
 
 require (
 	github.com/elitracy/p2pnetwork/shared v0.0.0-20250714022117-2be7e5cd931b
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.0
 )

@@ -31,12 +31,7 @@ func initDB() error {
 	return err
 }
 
-func RegisterDevice(device models.Device) (*models.Device, error) {
-	result := db.Create(&device)
-	return &device, result.Error
-}
-
-func UpdateDevice(device models.Device) error {
+func UpsertDevice(device models.Device) error {
 	result := db.Save(&device).Error
 	return result
 }
