@@ -34,8 +34,15 @@ type AuthInfo struct {
 	private_key ed25519.PrivateKey
 }
 
+type PeersResponse struct {
+	Peers []models.Device `json:peers`
+}
+
 var BearerKeys AuthInfo
 var peers []models.Device
+
+const PING_PEERS_HEARTBEAT = 10
+const PING_SERVER_HEARTBEAT = 30
 
 func getPeersFromServer(server string) {
 	for {
@@ -53,7 +60,8 @@ func getPeersFromServer(server string) {
 			continue
 		}
 
-		err = json.NewDecoder(resp.Body).Decode(&peers)
+		var peersResp PeersResponse
+		err = json.NewDecoder(resp.Body).Decode(&peersResp)
 
 		resp.Body.Close()
 		if err != nil {
@@ -62,8 +70,10 @@ func getPeersFromServer(server string) {
 			continue
 		}
 
+		peers = peersResp.Peers
+
 		saveEncryptedPeers(peers)
-		time.Sleep(2 * time.Second)
+		time.Sleep(2 * PING_SERVER_HEARTBEAT)
 	}
 }
 
@@ -144,7 +154,6 @@ func getOrCreateAESKey() []byte {
 func getDeviceByPubKey(pubKey string) (*models.Device, error) {
 	for _, peer := range peers {
 		if peer.PubKey == pubKey {
-			fmt.Println("trying to return peer")
 			return &peer, nil
 		}
 	}
@@ -189,7 +198,7 @@ func checkPeers() {
 			resp, err := client.Do(req)
 
 			if err != nil || resp.StatusCode != 200 {
-				log.Printf("❌ Failed to ping peer: %v", err)
+				// log.Printf("❌ Failed to ping peer: %v", err)
 				peers[i].Connected = false
 			} else {
 				peers[i].Connected = true
@@ -203,7 +212,7 @@ func checkPeers() {
 			}
 		}
 
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second * PING_PEERS_HEARTBEAT)
 	}
 }
 

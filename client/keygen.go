@@ -107,7 +107,7 @@ func registerDevice(name string, endpoint string, server string, authInfo *AuthI
 		return err
 	}
 
-	req, err := http.NewRequest("POST", server+"/device", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", server+"/register", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
